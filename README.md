@@ -1,10 +1,12 @@
 # coax-remote
 
-Turn your phone into a remote for [Coax](https://out-to-lunch.pro/coax) running on
+Turn your phone into a remote for [Coax](https://apps.apple.com/app/id6752622762) running on
 a Mac. Channel up/down, shuffle, full screen, jump to any channel, and a tappable
 channel guide — served from the Mac itself, so there's no app to install.
 
 Add it to your Home Screen and it launches chrome-less, like a native remote.
+
+<img src="docs/screenshot.png" width="330" alt="The remote on a phone: channel up/down, chaos, full screen, volume, weather and channel guide">
 
 ```
 iPhone ──http──▶ Hammerspoon ──menu bar──▶ Coax
