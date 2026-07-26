@@ -6,7 +6,16 @@ channel guide — served from the Mac itself, so there's no app to install.
 
 Add it to your Home Screen and it launches chrome-less, like a native remote.
 
-<img src="docs/screenshot.png" width="330" alt="The remote on a phone: channel up/down, chaos, full screen, volume, weather and channel guide">
+<p align="center">
+  <img src="docs/screenshot.png" width="300" alt="The remote on an iPhone: current channel, channel up/down, chaos, full screen, weather and search">
+  &nbsp;&nbsp;
+  <img src="docs/screenshot-guide.png" width="300" alt="The channel guide open on an iPhone: every channel, tappable">
+</p>
+
+Above: the remote running as a Home Screen web app on an iPhone. On the left, the
+status panel shows what's on and the volume keys are greyed out — this Mac feeds a
+TV over HDMI, which owns its own volume (see [caveats](#notes-and-caveats)). On the
+right, the channel guide: every channel Coax generated, tap to tune.
 
 ```
 iPhone ──http──▶ Hammerspoon ──menu bar──▶ Coax
