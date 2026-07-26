@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Coax">
+<meta name="theme-color" content="#0b0b0c">
+<title>Coax</title>
+<style>
+  :root{
+    color-scheme: dark;
+    --bg:#0b0b0c; --panel:#17171a; --panel-hi:#212127; --line:#2c2c33;
+    --ink:#f2f2f0; --dim:#8b8b96; --amber:#ffb000; --on-air:#5ddc7a; --bad:#ff6b6b;
+    --r:12px;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+  html{ -webkit-text-size-adjust:100% }
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font:16px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;
+    padding:env(safe-area-inset-top) env(safe-area-inset-right)
+            env(safe-area-inset-bottom) env(safe-area-inset-left);
+    overscroll-behavior:none;
+    /* manipulation kills double-tap-to-zoom and the 300ms click delay, while
+       leaving pinch-zoom alone — the accessibility escape hatch stays open. */
+    touch-action:manipulation;
+    -webkit-user-select:none; user-select:none;
+    -webkit-touch-callout:none;
+  }
+  .wrap{max-width:520px; margin:0 auto; padding:12px 12px 28px}
+
+  /* status ------------------------------------------------------------- */
+  .screen{
+    background:var(--panel); border:1px solid var(--line); border-radius:14px;
+    padding:14px 16px; margin-bottom:14px; min-height:88px;
+  }
+  .ch{font-size:13px; letter-spacing:.14em; color:var(--amber); text-transform:uppercase}
+  .prog{font-size:17px; margin-top:6px; overflow:hidden; text-overflow:ellipsis;
+        display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical}
+  .meta{margin-top:8px; font-size:12px; color:var(--dim); letter-spacing:.08em}
+  .dot{display:inline-block; width:7px; height:7px; border-radius:50%;
+       background:var(--on-air); margin-right:6px; vertical-align:1px}
+  .dot.off{background:var(--bad)}
+
+  /* keys ---------------------------------------------------------------- */
+  .grid{display:grid; gap:10px; margin-bottom:10px}
+  .g2{grid-template-columns:1fr 1fr}
+  .g3{grid-template-columns:repeat(3,1fr)}
+  .g4{grid-template-columns:repeat(4,1fr)}
+
+  .key{
+    position:relative; display:flex; align-items:center; justify-content:center;
+    text-align:center; min-height:58px; padding:10px 6px;
+    font-size:13px; letter-spacing:.1em; text-transform:uppercase;
+    background:var(--panel); border:1px solid var(--line); border-radius:var(--r);
+    touch-action:manipulation;
+  }
+  .key.tall{min-height:92px; font-size:15px}
+  .key.hero{background:#241a05; border-color:#4a3609; color:var(--amber)}
+  .key.on{border-color:var(--amber); color:var(--amber)}
+  /* Still tappable — pressing one explains why it can't work. */
+  .key.dead{opacity:.4}
+  .arrow{font-size:26px; display:block; line-height:1; margin-bottom:4px}
+
+  /* The invisible native switch that IS the tap target. iOS plays its system
+     tick only for a finger landing on a real control — scripted toggles stopped
+     working in iOS 26.5 — so the control has to sit on top, not behind.
+     clip-path (not overflow:hidden) because it clips hit-testing too. */
+  .hap{
+    position:absolute; inset:0; width:100%; height:100%; margin:0;
+    opacity:0; cursor:pointer; touch-action:manipulation;
+    clip-path:inset(0 round var(--r));
+  }
+  .hap:focus-visible{opacity:.001; outline:2px solid var(--amber); outline-offset:2px}
+
+  /* Feel is carried by sight and timing too, since iOS gives one fixed tick. */
+  .key.hit{animation:hit .18s ease-out}
+  .key[data-feel="chaos"].hit{animation:hit-hero .32s ease-out}
+  .key[data-feel="mode"].hit{animation:hit-mode .26s ease-out}
+  @keyframes hit{from{background:var(--panel-hi); transform:scale(.97)}}
+  @keyframes hit-hero{from{background:#4a3609; transform:scale(.94)}}
+  @keyframes hit-mode{from{background:var(--panel-hi); border-color:var(--amber)}}
+
+  /* search + guide ------------------------------------------------------ */
+  .find{display:flex; gap:8px; margin:14px 0 10px}
+  input[type=text]{
+    flex:1; min-width:0; font:inherit; font-size:15px; color:var(--ink);
+    background:var(--panel); border:1px solid var(--line); border-radius:var(--r);
+    padding:0 14px; min-height:52px; -webkit-user-select:text; user-select:text;
+  }
+  input[type=text]::placeholder{color:var(--dim)}
+  .find .key{flex:0 0 auto; min-height:52px; padding:0 20px}
+
+  .guide{border:1px solid var(--line); border-radius:var(--r); overflow:hidden}
+  .guide summary{
+    list-style:none; padding:16px; font-size:13px; letter-spacing:.1em;
+    text-transform:uppercase; color:var(--dim); touch-action:manipulation;
+  }
+  .guide summary::-webkit-details-marker{display:none}
+  .guide[open] summary{border-bottom:1px solid var(--line); color:var(--ink)}
+  .list{max-height:46vh; overflow-y:auto; overscroll-behavior:contain;
+        -webkit-overflow-scrolling:touch}
+  .row{
+    position:relative; display:flex; gap:12px; align-items:baseline;
+    border-bottom:1px solid var(--line); min-height:56px; padding:10px 16px;
+    font-size:15px; touch-action:manipulation;
+  }
+  .row:last-child{border-bottom:0}
+  .row.hit{animation:hit .18s ease-out}
+  .row b{color:var(--amber); font-weight:400; flex:0 0 46px}
+  .row span{color:var(--dim); font-size:13px}
+  .row i{font-style:normal; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .row .hap{clip-path:inset(0)}
+
+  /* Offscreen pair for the pre-26.5 scripted tick. Kept in the layout (not
+     display:none) or WebKit won't fire the haptic at all. */
+  .ghost{position:fixed; bottom:0; left:0; width:1px; height:1px;
+         opacity:0; pointer-events:none}
+
+  .toast{
+    position:fixed; left:50%; bottom:calc(18px + env(safe-area-inset-bottom));
+    transform:translateX(-50%) translateY(20px);
+    background:var(--panel-hi); border:1px solid var(--line); border-radius:10px;
+    padding:11px 16px; font-size:13px; max-width:88vw; opacity:0;
+    transition:opacity .18s, transform .18s; pointer-events:none;
+  }
+  .toast.show{opacity:1; transform:translateX(-50%) translateY(0)}
+
+  @media (prefers-reduced-motion: reduce){
+    .key.hit,.key[data-feel="chaos"].hit,.key[data-feel="mode"].hit,.row.hit{animation:none}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="screen">
+    <div class="ch" id="ch">connecting…</div>
+    <div class="prog" id="prog"></div>
+    <div class="meta"><span class="dot off" id="dot"></span><span id="meta">—</span></div>
+  </div>
+
+  <div class="grid g2">
+    <div class="key tall" data-cmd="u" data-feel="transport">
+      <span><span class="arrow">▲</span>ch up</span>
+      <input type="checkbox" switch class="hap" aria-label="Channel up">
+    </div>
+    <div class="key tall" data-cmd="d" data-feel="transport">
+      <span><span class="arrow">▼</span>ch down</span>
+      <input type="checkbox" switch class="hap" aria-label="Channel down">
+    </div>
+  </div>
+
+  <div class="grid g2">
+    <div class="key hero" data-cmd="chaos" data-feel="chaos">⚡ chaos
+      <input type="checkbox" switch class="hap" aria-label="Shuffle to a random channel">
+    </div>
+    <div class="key" id="key-full" data-cmd="full" data-feel="mode">⛶ full screen
+      <input type="checkbox" switch class="hap" aria-label="Toggle full screen">
+    </div>
+  </div>
+
+  <div class="grid g4">
+    <div class="key vol" data-cmd="vol down" data-feel="fine">vol −
+      <input type="checkbox" switch class="hap" aria-label="Volume down">
+    </div>
+    <div class="key vol" data-cmd="vol up" data-feel="fine">vol +
+      <input type="checkbox" switch class="hap" aria-label="Volume up">
+    </div>
+    <div class="key vol" id="key-mute" data-cmd="mute" data-feel="toggle">mute
+      <input type="checkbox" switch class="hap" aria-label="Toggle mute">
+    </div>
+    <div class="key" data-cmd="theme" data-feel="mode">theme
+      <input type="checkbox" switch class="hap" aria-label="Switch theme">
+    </div>
+  </div>
+
+  <div class="grid g3">
+    <div class="key" data-cmd="weather" data-feel="tune">☀ weather
+      <input type="checkbox" switch class="hap" aria-label="Weather channel">
+    </div>
+    <div class="key" data-cmd="whatson" data-feel="tune">▤ what's on
+      <input type="checkbox" switch class="hap" aria-label="Now Playing channel">
+    </div>
+    <div class="key" data-cmd="recent" data-feel="tune">✦ recent
+      <input type="checkbox" switch class="hap" aria-label="Recently added channel">
+    </div>
+  </div>
+
+  <div class="find">
+    <input type="text" id="q" placeholder="find: horror, tarantino…"
+           autocapitalize="off" autocorrect="off" enterkeyhint="search">
+    <div class="key" data-act="find" data-feel="tune">go
+      <input type="checkbox" switch class="hap" aria-label="Search channels">
+    </div>
+  </div>
+
+  <details class="guide" id="guide">
+    <summary>▸ channel guide</summary>
+    <div class="list" id="list"></div>
+  </details>
+
+</div>
+
+<input type="checkbox" switch id="ghost" class="ghost" tabindex="-1" aria-hidden="true">
+<label for="ghost" id="ghost-label" class="ghost" aria-hidden="true"></label>
+<div class="toast" id="toast"></div>
+
+<script>
+/* The token arrives once in the URL, then gets stashed and scrubbed out of the
+   address bar — so it isn't sitting in browser history, in a shared screenshot,
+   or in a Referer header. Every later call sends it as a header instead.       */
+const TOKEN = (() => {
+  const p = new URLSearchParams(location.search);
+  const fromUrl = p.get('t');
+  if(fromUrl){
+    try{ localStorage.setItem('coax-token', fromUrl); }catch(e){}
+    p.delete('t');
+    history.replaceState(null, '', location.pathname + (p.toString() ? '?' + p : ''));
+    return fromUrl;
+  }
+  try{ return localStorage.getItem('coax-token') || ''; }catch(e){ return ''; }
+})();
+
+const $ = id => document.getElementById(id);
+let toastTimer;
+
+/* haptics ------------------------------------------------------------------
+   Three layers, because no single one covers everything:
+     1. the .hap switch under the finger  → one system tick on iOS 17.4+
+     2. navigator.vibrate(pattern)        → real per-button feels, but Android
+                                            only; WebKit has never shipped it
+     3. scripted ghost ticks              → extra taps on iOS before 26.5, where
+                                            label.click() still fired a haptic
+   So on an iPhone every key ticks, and the *differences* between keys are
+   carried by 2 where available and by the press animation everywhere.        */
+const FEEL = {
+  transport: 8,              // channel up/down — a light click
+  fine:      4,              // volume nudges — barely there
+  tune:      12,             // landed on something
+  mode:      24,             // full screen / theme — a firmer thunk
+  toggle:    [16, 50, 16],   // mute on/off — two beats
+  chaos:     [14, 40, 14, 40, 22],
+};
+
+function ticks(pattern){
+  return Array.isArray(pattern) ? Math.ceil(pattern.length / 2) : 1;
+}
+
+function haptic(feel){
+  const pattern = FEEL[feel] ?? FEEL.transport;
+  if(navigator.vibrate) navigator.vibrate(pattern);
+  // The finger already produced tick #1; script the rest for older iOS.
+  for(let i = 1; i < ticks(pattern); i++){
+    setTimeout(() => $('ghost-label').click(), i * 60);
+  }
+}
+
+/* wiring -------------------------------------------------------------------
+   Two ways in, deliberately:
+     change on .hap — the normal path. Safari stretches the switch to fill the
+       key, so the finger lands on the control and gets the tick.
+     click on the key — the safety net. Engines without a switch control (Chrome,
+       and so Android) don't stretch a checkbox to width:100%, which would leave
+       the key's edges dead. No haptic tick there, but the button still works.
+   A tap on the switch also bubbles a click, so that path ignores .hap targets
+   to avoid firing twice.                                                      */
+function activate(key){
+  haptic(key.dataset.feel);
+  key.classList.remove('hit');
+  void key.offsetWidth;              // restart the animation on a fast re-tap
+  key.classList.add('hit');
+
+  if(key.dataset.act === 'find') return runSearch();
+  send(key.dataset.cmd, key.dataset.feel === 'transport' || key.dataset.feel === 'fine');
+}
+
+document.addEventListener('change', e => {
+  if(!e.target.classList.contains('hap')) return;
+  const key = e.target.closest('[data-cmd],[data-act]');
+  if(key) activate(key);
+});
+
+document.addEventListener('click', e => {
+  if(e.target.classList.contains('hap')) return;   // the change handler has it
+  const key = e.target.closest?.('[data-cmd],[data-act]');
+  if(key) activate(key);
+});
+
+/* api ---------------------------------------------------------------------- */
+function toast(msg){
+  const el = $('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2200);
+}
+
+async function api(route, params = {}){
+  const q = new URLSearchParams(params);
+  const res = await fetch(`${route}?${q}`, { headers: { 'X-Coax-Token': TOKEN } });
+  if(!res.ok) throw new Error(res.status === 403 ? 'bad token — reopen the bookmark'
+                                                : `error ${res.status}`);
+  return res.json();
+}
+
+function paint(s){
+  $('dot').className = 'dot' + (s.running ? '' : ' off');
+  if(!s.running){
+    $('ch').textContent = 'coax is off';
+    $('prog').textContent = '';
+    $('meta').textContent = 'press any button to launch';
+    return;
+  }
+  // Coax blanks its window title for a beat while it tunes — don't flash
+  // "no channel" at someone who just pressed a button.
+  $('ch').textContent = s.channel || 'tuning…';
+  $('prog').textContent = s.name || '';
+  const bits = [s.full ? 'full screen' : 'windowed'];
+  // canVolume is false on an HDMI set, which runs its own mixer — grey the
+  // volume keys out rather than let them lie about a level they can't change.
+  if(s.canVolume) bits.push(s.muted ? 'muted' : `vol ${s.volume}%`);
+  else bits.push(`${s.device || 'output'} volume`);
+  $('meta').textContent = bits.join('  ·  ');
+  $('key-full').classList.toggle('on', !!s.full);
+  $('key-mute').classList.toggle('on', !!s.muted && s.canVolume);
+  document.querySelectorAll('.vol').forEach(k => k.classList.toggle('dead', !s.canVolume));
+}
+
+async function send(cmd, quiet){
+  try{
+    const r = await api('/api/cmd', { c: cmd });
+    if(r.state) paint(r.state);
+    if(!quiet && r.reply) toast(r.reply);
+    setTimeout(refresh, 1200);   // tuning takes a moment to reach the title
+  }catch(e){ toast(e.message); }
+}
+
+async function refresh(){
+  try{ paint(await api('/api/status')); }
+  catch(e){ $('ch').textContent = e.message; $('dot').className = 'dot off'; }
+}
+
+function runSearch(){
+  const q = $('q').value.trim();
+  if(!q) return;
+  send('find ' + q);
+  $('q').blur();
+}
+
+$('q').addEventListener('keydown', e => {
+  if(e.key === 'Enter'){ e.preventDefault(); haptic('tune'); runSearch(); }
+});
+
+/* the guide is ~150 rows, so only fetch it when it's actually opened --------- */
+let guideLoaded = false;
+$('guide').addEventListener('toggle', async () => {
+  if(!$('guide').open || guideLoaded) return;
+  try{
+    const chans = await api('/api/guide');
+    $('list').innerHTML = '';
+    for(const c of chans){
+      const row = document.createElement('div');
+      row.className = 'row';
+      row.dataset.cmd = 'ch ' + c.num;
+      row.dataset.feel = 'tune';
+      row.innerHTML = '<b></b><i></i><span></span>' +
+        '<input type="checkbox" switch class="hap">';
+      row.querySelector('b').textContent = c.num;
+      row.querySelector('i').textContent = c.name;
+      row.querySelector('span').textContent = c.cat;
+      row.querySelector('.hap').setAttribute('aria-label', `Tune to ${c.num} ${c.name}`);
+      $('list').appendChild(row);
+    }
+    guideLoaded = true;
+  }catch(e){ toast(e.message); }
+});
+
+// Tuning from the guide closes it; do it after the change handler has fired.
+$('list').addEventListener('change', () => setTimeout(() => $('guide').open = false, 120));
+
+refresh();
+setInterval(() => { if(!document.hidden) refresh(); }, 6000);
+document.addEventListener('visibilitychange', () => { if(!document.hidden) refresh(); });
+</script>
+</body>
+</html>

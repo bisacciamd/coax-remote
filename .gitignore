@@ -1,0 +1,10 @@
+# The API token — never commit this. It lives in ~/.hammerspoon anyway,
+# but a stray copy here would hand over the machine.
+coax-token
+*.secret
+
+# Personal setup notes (your IPs, hostnames, tokens)
+MY-SETUP.md
+
+.DS_Store
+*.log

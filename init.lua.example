@@ -1,0 +1,11 @@
+-- Minimal ~/.hammerspoon/init.lua for coax-remote.
+coax = require("coax").start()
+
+-- Options, all optional:
+-- coax = require("coax").start({
+--   port       = 8765,
+--   interface  = "localhost",   -- refuse anything off this machine
+--   extraHosts = { "tv-mac" },  -- extra hostnames you reach it by
+-- })
+
+hs.autoLaunch(true)   -- the remote is useless if Hammerspoon isn't running

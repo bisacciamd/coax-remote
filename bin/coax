@@ -1,0 +1,39 @@
+#!/bin/sh
+# coax — drive Coax on this Mac from a terminal, or from an iPhone Shortcut's
+# "Run Script Over SSH" action. Whatever it prints is what the Shortcut gets back.
+#
+#   coax status
+#   coax ch 113
+#   coax find tarantino
+#
+# The work happens in Hammerspoon (coax.lua), because that is the process holding
+# the Accessibility grant Coax's menus need.
+
+# The `hs` CLI ships inside Hammerspoon.app; Homebrew symlinks it per-arch.
+for candidate in \
+    /opt/homebrew/bin/hs \
+    /usr/local/bin/hs \
+    /Applications/Hammerspoon.app/Contents/Frameworks/hs/hs
+do
+    [ -x "$candidate" ] && HS="$candidate" && break
+done
+
+if [ -z "$HS" ]; then
+    echo "coax: can't find the 'hs' CLI — is Hammerspoon installed?" >&2
+    exit 1
+fi
+
+if [ "$1" = "" ] || [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
+    set -- help
+fi
+
+if ! pgrep -xq Hammerspoon; then
+    open -a Hammerspoon || { echo "coax: Hammerspoon won't start" >&2; exit 1; }
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
+        pgrep -xq Hammerspoon && break
+        sleep 1
+    done
+fi
+
+# Long brackets keep free text (film titles, apostrophes) intact.
+exec "$HS" -c "coax.run([==[$*]==])"
