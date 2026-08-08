@@ -40,7 +40,8 @@ A web remote (the main thing), plus two other ways in — all on one dispatcher:
 | Command | Does |
 |---|---|
 | `u` / `d` | channel up / down |
-| `full [on\|off]` | toggle / force full screen |
+| `scrn [on\|off]` | the stream panel full screen — Coax's own **FULL SCRN** |
+| `full [on\|off]` | the app *window's* full screen — a different axis, see below |
 | `ch <n>` | tune to a channel number |
 | `find <text>` | tune to the first channel matching text — `find horror`, `find tarantino` |
 | `chaos [category]` | random channel, never the one already on |
@@ -50,7 +51,7 @@ A web remote (the main thing), plus two other ways in — all on one dispatcher:
 | `theme [retro\|modern]` | switch theme |
 | `wt` / `multi` | Watch Together / Multi-Window |
 | `vol <up\|down\|0-100>` / `mute` | system output volume — see the caveat below |
-| `status` | what's on, full screen state, volume |
+| `status` | what's on, both full screen states, volume |
 | `open` / `quit` | launch / quit Coax |
 | `screenoff` | put the display to sleep |
 | `help` | the list above |
@@ -59,6 +60,28 @@ Categories: Genre, Studio, Decades, Recents, Director, Collections, Actors, Now
 Playing, Weather — matched loosely, so `nowplaying`, `now playing` and `now` all
 work. Aliases exist for the obvious alternatives (`up`, `next`, `fs`, `shuffle`,
 `tune`, `guide`, `power`, `sleep`, …).
+
+### Two full screens
+
+Coax has two of them and they are independent, which is worth knowing before you
+wonder why one button doesn't do what you meant:
+
+- **`scrn`** — the *stream panel*. The guide plays its stream in a pane beside the
+  EPG; this hands the whole app view to the player. It's the one you want while
+  watching, and it's the app's own on-screen `FULL SCRN` button.
+- **`full`** — the *app window*, against the desktop. On a TV you set this once and
+  never touch it again.
+
+They're easy to conflate because Coax labels both "Enter Full Screen" in the
+accessibility layer — the menu item resizes the window, the HUD button resizes the
+panel. Entering `scrn` presses that button (there is no menu item and no key
+shortcut for it); leaving sends Escape, which works even after the player's HUD has
+auto-hidden and taken the button with it.
+
+On the phone remote both live on one key: **tap** for the panel, **hold** for the
+window. A hold rather than a double-tap deliberately — the panel takes a moment to
+swap, and the instinct when a press looks like it missed is to press again, which
+under a double-tap scheme would fire the rare command at exactly the wrong moment.
 
 ## Install
 
@@ -160,7 +183,7 @@ Every command and reply is logged to `/tmp/coax_log`.
 
 | Route | Returns |
 |---|---|
-| `GET /api/status` | `{running, channel, num, name, full, device, volume, muted, canVolume}` |
+| `GET /api/status` | `{running, channel, num, name, panel, full, infoShown, device, volume, muted, canVolume}` |
 | `GET /api/guide` | `[{num, name, cat, now}, …]` — `&fresh=1` bypasses the menu cache |
 | `GET /api/cmd?c=<cmd>` | `{reply, state}` |
 

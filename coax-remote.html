@@ -61,6 +61,13 @@
   .key.tall{min-height:92px; font-size:15px}
   .key.hero{background:#241a05; border-color:#4a3609; color:var(--amber)}
   .key.on{border-color:var(--amber); color:var(--amber)}
+  /* The second line names the hold gesture, which is otherwise undiscoverable. */
+  .key small{display:block; margin-top:5px; font-size:9px; letter-spacing:.12em;
+             color:var(--dim); text-transform:uppercase}
+  .key.on small{color:var(--dim)}
+  /* Held long enough to have committed — confirms the gesture before the finger
+     lifts, so a hold never feels like a tap that went missing. */
+  .key.holding{border-color:var(--amber); background:var(--panel-hi)}
   /* Still tappable — pressing one explains why it can't work. */
   .key.dead{opacity:.4}
   .arrow{font-size:26px; display:block; line-height:1; margin-bottom:4px}
@@ -158,8 +165,10 @@
     <div class="key hero" data-cmd="chaos" data-feel="chaos">⚡ chaos
       <input type="checkbox" switch class="hap" aria-label="Shuffle to a random channel">
     </div>
-    <div class="key" id="key-full" data-cmd="full" data-feel="mode">⛶ full screen
-      <input type="checkbox" switch class="hap" aria-label="Toggle full screen">
+    <div class="key" id="key-full" data-cmd="scrn" data-hold="full" data-feel="mode">
+      <span>⛶ full scrn<small>hold: window</small></span>
+      <input type="checkbox" switch class="hap"
+             aria-label="Toggle the stream panel full screen. Press and hold to toggle the app window instead.">
     </div>
   </div>
 
@@ -275,6 +284,8 @@ function haptic(feel){
    A tap on the switch also bubbles a click, so that path ignores .hap targets
    to avoid firing twice.                                                      */
 function activate(key){
+  // Swallow the tap that ends a hold — both events from that one lift.
+  if(key === heldKey && Date.now() - heldAt < 1000){ heldKey = null; return; }
   haptic(key.dataset.feel);
   key.classList.remove('hit');
   void key.offsetWidth;              // restart the animation on a fast re-tap
@@ -295,6 +306,47 @@ document.addEventListener('click', e => {
   const key = e.target.closest?.('[data-cmd],[data-act]');
   if(key) activate(key);
 });
+
+/* long press ---------------------------------------------------------------
+   data-hold names a second command reached by holding the key. It carries the
+   rare action (the app window's full screen) while the tap keeps the everyday one
+   (the stream panel), because a hold is the one gesture an impatient thumb can't
+   produce by accident: when the panel takes a moment to swap, the instinct is to
+   tap again, and a double-tap scheme would fire the rare command right then.
+
+   The switch under the finger still fires its change event when the finger
+   lifts, so a committed hold leaves the note that activate() reads to stand
+   down. Both change and click can arrive from one lift, hence a timestamp
+   rather than a flag that the first of them would clear.                      */
+const HOLD_MS = 600, HOLD_SLOP = 12;
+let holdTimer = null, holdFrom = null, heldKey = null, heldAt = 0;
+
+function cancelHold(){
+  clearTimeout(holdTimer);
+  holdTimer = holdFrom = null;
+  document.querySelectorAll('.key.holding').forEach(k => k.classList.remove('holding'));
+}
+
+document.addEventListener('pointerdown', e => {
+  const key = e.target.closest?.('[data-hold]');
+  if(!key) return;
+  holdFrom = { x: e.clientX, y: e.clientY };
+  holdTimer = setTimeout(() => {
+    heldKey = key; heldAt = Date.now();
+    key.classList.add('holding');
+    haptic('toggle');                 // two beats: not the tap you'd have got
+    send(key.dataset.hold);
+  }, HOLD_MS);
+});
+
+// A finger that travels is scrolling, not holding.
+document.addEventListener('pointermove', e => {
+  if(!holdFrom) return;
+  if(Math.abs(e.clientX - holdFrom.x) > HOLD_SLOP ||
+     Math.abs(e.clientY - holdFrom.y) > HOLD_SLOP) cancelHold();
+});
+document.addEventListener('pointerup', cancelHold);
+document.addEventListener('pointercancel', cancelHold);
 
 /* api ---------------------------------------------------------------------- */
 function toast(msg){
@@ -325,13 +377,17 @@ function paint(s){
   // "no channel" at someone who just pressed a button.
   $('ch').textContent = s.channel || 'tuning…';
   $('prog').textContent = s.name || '';
-  const bits = [s.full ? 'full screen' : 'windowed'];
+  // Two full screens to report. The window one is set once on the TV, so it
+  // only earns a word when it's in the state you didn't leave it in.
+  const bits = [s.panel ? 'full scrn' : 'in guide'];
+  if(!s.full) bits.push('app windowed');
   // canVolume is false on an HDMI set, which runs its own mixer — grey the
   // volume keys out rather than let them lie about a level they can't change.
   if(s.canVolume) bits.push(s.muted ? 'muted' : `vol ${s.volume}%`);
   else bits.push(`${s.device || 'output'} volume`);
   $('meta').textContent = bits.join('  ·  ');
-  $('key-full').classList.toggle('on', !!s.full);
+  // Lit for the tap's axis (the panel), not the hold's.
+  $('key-full').classList.toggle('on', !!s.panel);
   $('key-info').classList.toggle('on', !!s.infoShown);
   $('key-mute').classList.toggle('on', !!s.muted && s.canVolume);
   document.querySelectorAll('.vol').forEach(k => k.classList.toggle('dead', !s.canVolume));

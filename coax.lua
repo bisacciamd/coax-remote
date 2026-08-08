@@ -9,9 +9,12 @@
 -- Coax is driven through its menu bar (hs.application:selectMenuItem) rather
 -- than keystrokes wherever a menu item exists — the menus are the most stable
 -- handle on the app, since its window is a single Metal-drawn view with no
--- titled controls. A few on-screen HUD buttons (e.g. the info-pane toggle)
--- have no menu equivalent at all; those are reached by walking the window's
--- AX tree and matching on AXDescription instead (see findHudButton). Channel
+-- titled controls. A few on-screen HUD buttons (the info-pane toggle, the
+-- FULL SCRN panel toggle) have no menu equivalent at all; those are reached by
+-- walking the window's AX tree and matching on AXDescription instead (see
+-- findHudButton). Note that "full screen" means two unrelated things here —
+-- fullScreen() sizes the window, panelFullScreen() sizes the stream panel inside
+-- it — and the AX layer unhelpfully labels both "Enter Full Screen". Channel
 -- menu titles embed the programme that is on right now ("CH 113: Horror - Nope
 -- (6:45PM-9PM)"), so they go stale: every lookup can refetch and retry once.
 --
@@ -180,6 +183,53 @@ local function infoPane(a, want)
     return want and "info pane shown" or "info pane hidden"
 end
 
+-- The in-app twin of fullScreen(), and the one you actually reach for. Coax's
+-- guide plays the stream in a panel beside the EPG; its "FULL SCRN" HUD button
+-- hands the whole app view to the player. That button's AXDescription is
+-- "Enter Full Screen" — the very same string as the View menu item, which is the
+-- trap: the menu item resizes the *window*, the button resizes the *panel*.
+-- There is no menu equivalent, and no key shortcut for entering.
+--
+-- Reading the state is a three-way match, because the player's HUD auto-hides a
+-- few seconds in and takes the entire AX subtree with it:
+--     "Enter Full Screen" present  -> guide view    (panel not full)
+--     "Back to Guide"    present   -> player view   (panel full, HUD still up)
+--     nothing at all               -> player view   (panel full, HUD hidden)
+-- The guide's own HUD never auto-hides, so an empty tree is unambiguous.
+local function panelIsFull(a)
+    local _, desc = findHudButton(a, { ["Enter Full Screen"] = true, ["Back to Guide"] = true })
+    if desc == "Enter Full Screen" then return false end
+    return true
+end
+
+-- `want` = true / false / nil (toggle), like fullScreen().
+local function panelFullScreen(a, want)
+    local isFull = panelIsFull(a)
+    if want == nil then want = not isFull end
+    if want ~= isFull then
+        if want then
+            local btn = findHudButton(a, { ["Enter Full Screen"] = true })
+            if not btn then return "FULL SCRN button not on screen" end
+            btn:performAction("AXPress")
+        else
+            -- Escape backs out of the player whether or not its HUD is still up.
+            -- "Back to Guide" can't: once the HUD hides there is no button to press.
+            hs.eventtap.keyStroke({}, "escape")
+        end
+        -- Then wait for the view to actually swap. The web remote paints its key
+        -- from the state travelling back with this very reply, and the player
+        -- takes a beat to tear down — returning early lights the key wrong until
+        -- the next poll corrects it. Report what we observe, not what we asked
+        -- for, so a press that didn't take says so.
+        for _ = 1, 12 do
+            hs.timer.usleep(100000)
+            isFull = panelIsFull(a)
+            if isFull == want then break end
+        end
+    end
+    return isFull and "panel full screen" or "panel in guide"
+end
+
 local function theme(a, want)
     local items = children(a, { "View", "Theme" }, true) or {}
     local current
@@ -262,6 +312,9 @@ local H = {}
 H["u"] = function() hs.eventtap.keyStroke({}, "up");   return "channel up" end
 H["d"] = function() hs.eventtap.keyStroke({}, "down"); return "channel down" end
 
+-- The rarer of the two full screens: the app *window* against the desktop. On
+-- the TV this is set once and forgotten, which is why the remote hides it behind
+-- a long press rather than a tap.
 H["full"] = function(a, arg)
     local want = nil
     if arg == "on" or arg == "1" then want = true end
@@ -269,9 +322,18 @@ H["full"] = function(a, arg)
     return fullScreen(a, want)
 end
 
--- Distinct from H["full"]: that's the app window's OS-level full screen, this
--- is the in-panel metadata/EPG overlay — a cinema-style declutter with no
--- menu item and no key shortcut.
+-- The everyday one: the stream panel against the guide. See panelFullScreen for
+-- why this can't just be H["full"] with a different argument.
+H["scrn"] = function(a, arg)
+    local want = nil
+    if arg == "on" or arg == "1" then want = true end
+    if arg == "off" or arg == "0" or arg == "guide" then want = false end
+    return panelFullScreen(a, want)
+end
+
+-- The third of the declutter toggles, and neither of the two above: not the
+-- window, not the panel, but the metadata/EPG overlay drawn on top of them — a
+-- cinema-style declutter with no menu item and no key shortcut.
 H["info"] = function(a, arg)
     local want = nil
     if arg == "on" or arg == "1" or arg == "show" then want = true end
@@ -344,7 +406,11 @@ H["screenoff"] = function() hs.execute("pmset displaysleepnow"); return "display
 H["status"] = function()
     local s = M.state()
     if not s.running then return "Coax is not running" end
-    local bits = { s.channel or "no channel playing", s.full and "full screen" or "windowed" }
+    -- Two independent full screens, so name the one being reported. The window
+    -- axis earns a word only when it's in the unusual state.
+    local bits = { s.channel or "no channel playing",
+                   s.panel and "panel full screen" or "panel in guide" }
+    if not s.full then bits[#bits + 1] = "app windowed" end
     if not s.canVolume then
         bits[#bits + 1] = (s.device or "output") .. " volume"
     elseif s.muted then
@@ -370,7 +436,8 @@ end
 H["help"] = function()
     return table.concat({
         "u | d                channel up / down",
-        "full [on|off]        toggle full screen",
+        "scrn [on|off]        stream panel full screen (the app's FULL SCRN)",
+        "full [on|off]        the app *window's* full screen — a different thing",
         "info [on|off]        toggle the info/EPG overlay (cinema declutter)",
         "ch <n>               tune to channel n",
         "find <text>          tune to first channel matching text",
@@ -382,7 +449,7 @@ H["help"] = function()
         "wt                   Watch Together",
         "multi                Multi-Window",
         "vol <up|down|0-100>  set volume     mute   toggle mute",
-        "status               what's playing, full screen state, volume",
+        "status               what's playing, both full screen states, volume",
         "open | quit          launch / quit Coax",
         "screenoff            put the display to sleep",
         "categories: " .. table.concat(CATEGORIES, ", "),
@@ -393,7 +460,8 @@ end
 local ALIAS = {
     up = "u", ["ch+"] = "u", chup = "u", next = "u", ["+"] = "u",
     down = "d", ["ch-"] = "d", chdown = "d", prev = "d", ["-"] = "d",
-    fs = "full", fullscreen = "full",
+    fs = "full", fullscreen = "full", window = "full",
+    panel = "scrn", fullscrn = "scrn", stream = "scrn", big = "scrn",
     overlay = "info", hud = "info",
     shuffle = "chaos", random = "chaos",
     tune = "ch", channel = "ch",
@@ -430,6 +498,7 @@ function M.state()
         num       = tonumber(num),
         name      = name,
         full      = a:findMenuItem({ "View", "Exit Full Screen" }) ~= nil,
+        panel     = panelIsFull(a),
         infoShown = select(2, findHudButton(a, { ["Hide info pane"] = true, ["Show Info"] = true })) == "Hide info pane",
         device    = dev and dev:name() or nil,
         -- nil, not 0: an HDMI set has no software volume at all, and the remote
