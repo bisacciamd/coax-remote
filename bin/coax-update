@@ -1,0 +1,52 @@
+#!/bin/sh
+# coax-update — pull Coax's latest build from the Mac App Store unattended.
+#
+# The Store's installer refuses to upgrade a running app and pops a "Quit Coax
+# to update" dialog — fine at a desk, useless when nobody's there to click it.
+# So this hard-kills Coax first, upgrades, then relaunches through coax.lua
+# (which is also the only thing driving fullscreen, since Coax's window has no
+# accessible controls of its own).
+#
+#   coax-update
+#
+# Needs `mas` (`brew install mas`) and an App Store session already signed in
+# with the Apple ID that owns the Coax purchase — mas can't sign in itself.
+
+APP_ID=6752622762   # "Coax - Surf your Plex Server" — from `mas search Coax`
+
+for candidate in /opt/homebrew/bin/mas /usr/local/bin/mas; do
+    [ -x "$candidate" ] && MAS="$candidate" && break
+done
+[ -z "$MAS" ] && command -v mas >/dev/null 2>&1 && MAS="mas"
+
+if [ -z "$MAS" ]; then
+    echo "coax-update: can't find 'mas' — brew install mas" >&2
+    exit 1
+fi
+
+if ! "$MAS" outdated 2>/dev/null | grep -q "^$APP_ID "; then
+    echo "coax-update: Coax is already current"
+    exit 0
+fi
+
+echo "coax-update: quitting Coax"
+killall Coax 2>/dev/null
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+    pgrep -xq Coax || break
+    sleep 1
+done
+if pgrep -xq Coax; then
+    echo "coax-update: Coax won't quit, aborting" >&2
+    exit 1
+fi
+
+echo "coax-update: upgrading"
+"$MAS" upgrade "$APP_ID"
+
+echo "coax-update: relaunching"
+DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+"$DIR/coax" open
+"$DIR/coax" full on
+# TODO: also re-enter fullscreen on the streaming panel inside Coax, once we
+# know how to drive it — it has no menu item and no key shortcut (see coax.lua
+# H["full"], which only covers the app window via View > Enter/Exit Full Screen).
