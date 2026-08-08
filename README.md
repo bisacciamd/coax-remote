@@ -1,8 +1,9 @@
 # coax-remote
 
 Turn your phone into a remote for [Coax](https://apps.apple.com/app/id6752622762) running on
-a Mac. Channel up/down, shuffle, full screen, jump to any channel, and a tappable
-channel guide — served from the Mac itself, so there's no app to install.
+a Mac. Channel up/down, shuffle, jump to any channel, both of Coax's
+[two full screens](#two-full-screens), the info overlay, and a tappable channel
+guide — served from the Mac itself, so there's no app to install.
 
 Add it to your Home Screen and it launches chrome-less, like a native remote.
 
@@ -21,9 +22,13 @@ right, the channel guide: every channel Coax generated, tap to tune.
 iPhone ──http──▶ Hammerspoon ──menu bar──▶ Coax
 ```
 
-Coax has no scripting interface and its window is a single Metal-drawn view with
-no accessible controls, so this drives the app the only stable way there is: its
-**menu bar**, via `hs.application:selectMenuItem`. Channel up/down are arrow keys.
+Coax has no scripting interface, so this drives it the two stable ways there are.
+Mostly the **menu bar**, via `hs.application:selectMenuItem` — the most reliable
+handle on the app, and the only one that survives the video area being a single
+Metal-drawn view. But some controls exist *only* as on-screen HUD buttons with no
+menu item and no key shortcut — the info pane, and the `FULL SCRN` panel toggle —
+so those are reached by walking the window's **accessibility tree** and matching a
+button on its description. Channel up/down are arrow keys.
 
 ## What you get
 
@@ -41,7 +46,8 @@ A web remote (the main thing), plus two other ways in — all on one dispatcher:
 |---|---|
 | `u` / `d` | channel up / down |
 | `scrn [on\|off]` | the stream panel full screen — Coax's own **FULL SCRN** |
-| `full [on\|off]` | the app *window's* full screen — a different axis, see below |
+| `full [on\|off]` | the app *window's* full screen — [a different axis](#two-full-screens) |
+| `info [on\|off]` | the info / EPG overlay on top of either — a cinema declutter |
 | `ch <n>` | tune to a channel number |
 | `find <text>` | tune to the first channel matching text — `find horror`, `find tarantino` |
 | `chaos [category]` | random channel, never the one already on |
@@ -61,27 +67,53 @@ Playing, Weather — matched loosely, so `nowplaying`, `now playing` and `now` a
 work. Aliases exist for the obvious alternatives (`up`, `next`, `fs`, `shuffle`,
 `tune`, `guide`, `power`, `sleep`, …).
 
-### Two full screens
+## Two full screens
 
-Coax has two of them and they are independent, which is worth knowing before you
-wonder why one button doesn't do what you meant:
+Coax has two, they are independent, and mixing them up is the single most likely
+way to be confused by this remote — so:
 
-- **`scrn`** — the *stream panel*. The guide plays its stream in a pane beside the
-  EPG; this hands the whole app view to the player. It's the one you want while
-  watching, and it's the app's own on-screen `FULL SCRN` button.
-- **`full`** — the *app window*, against the desktop. On a TV you set this once and
-  never touch it again.
+| | What it resizes | When you want it |
+|---|---|---|
+| **`scrn`** | the **stream panel** inside the app — the guide plays its stream in a pane beside the EPG, and this hands the whole app view to the player | every time you sit down to watch |
+| **`full`** | the **app window**, against the desktop | once, when you first set the Mac up on the TV |
 
-They're easy to conflate because Coax labels both "Enter Full Screen" in the
-accessibility layer — the menu item resizes the window, the HUD button resizes the
-panel. Entering `scrn` presses that button (there is no menu item and no key
-shortcut for it); leaving sends Escape, which works even after the player's HUD has
-auto-hidden and taken the button with it.
+**On the phone they share one key: tap for the panel, hold for the window.** The
+key is labelled `⛶ FULL SCRN` with a `HOLD: WINDOW` hint underneath, lights up
+while the panel is full, and the status line reads `full scrn` or `in guide`.
 
-On the phone remote both live on one key: **tap** for the panel, **hold** for the
-window. A hold rather than a double-tap deliberately — the panel takes a moment to
-swap, and the instinct when a press looks like it missed is to press again, which
-under a double-tap scheme would fire the rare command at exactly the wrong moment.
+A hold rather than a double-tap, deliberately. The panel takes a moment to swap,
+and the instinct when a press looks like it missed is to press again — under a
+double-tap scheme that second press would fire the rare command at exactly the
+wrong moment, yanking the window out of full screen mid-film. A hold is the one
+gesture an impatient thumb can't produce by accident. It commits at 600 ms, gives
+you a two-beat haptic and lights the key when it does, and aborts if your finger
+travels more than 12 px, so scrolling past the key never triggers it.
+
+### Why this needed its own command
+
+`scrn` is not `full` with a different argument, because Coax labels **both** of
+them `"Enter Full Screen"` in the accessibility layer. The menu item of that name
+resizes the window; a HUD button with the identical description resizes the panel.
+The panel has no menu item and no key shortcut at all, so entering means finding
+and pressing that button.
+
+Leaving sends **Escape** instead of pressing `Back to Guide`, because the player's
+HUD auto-hides after a few seconds and takes its whole accessibility subtree with
+it — by the time you want out, there is often no button left to press. Escape works
+either way.
+
+Reading the state is a three-way match for the same reason:
+
+| What's in the accessibility tree | State |
+|---|---|
+| an `Enter Full Screen` button | guide — panel not full |
+| a `Back to Guide` button | player, HUD still up — panel full |
+| nothing at all | player, HUD hidden — panel full |
+
+The guide's own HUD never auto-hides, so an empty tree is unambiguous. After
+acting, `scrn` waits for the view to actually swap and reports **what it observes**
+rather than what it was asked for — the web remote paints its key from the state
+travelling back with that reply, and a press that didn't take should say so.
 
 ## Install
 
@@ -214,9 +246,14 @@ server-side, so the container has to be able to reach the Mac.
 
 ## Not built
 
-- The Chaos shuffle channel, Stream Options and the sleep timer are on-screen
-  remote buttons that the accessibility tree doesn't expose. Reaching them would
-  need image-matched clicking, or keyboard shortcuts from the developer.
+- **Stream Options, the sleep timer and Coax's own Shuffle Chaos: reachable, just
+  not wired up.** An earlier version of this README claimed the accessibility tree
+  didn't expose them. It does — the guide HUD offers `Stream Options` and
+  `Sleep Timer` as described buttons, and `View ▸ Show Stream Options` (⌘⇧O) and
+  `Watch ▸ Shuffle Chaos` are plain menu items. So these are a few lines each
+  rather than a dead end; they're absent because nothing has needed them yet, and
+  they're untested. (The existing `chaos` command picks a random channel itself,
+  deliberately never the one already on, rather than using Coax's shuffle.)
 - TV volume would need HDMI-CEC hardware or the set's own network remote.
 
 ## Licence
