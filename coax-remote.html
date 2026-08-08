@@ -46,6 +46,7 @@
 
   /* keys ---------------------------------------------------------------- */
   .grid{display:grid; gap:10px; margin-bottom:10px}
+  .g1{grid-template-columns:1fr}
   .g2{grid-template-columns:1fr 1fr}
   .g3{grid-template-columns:repeat(3,1fr)}
   .g4{grid-template-columns:repeat(4,1fr)}
@@ -159,6 +160,12 @@
     </div>
     <div class="key" id="key-full" data-cmd="full" data-feel="mode">⛶ full screen
       <input type="checkbox" switch class="hap" aria-label="Toggle full screen">
+    </div>
+  </div>
+
+  <div class="grid g1">
+    <div class="key" id="key-info" data-cmd="info" data-feel="mode">ⓘ info panel
+      <input type="checkbox" switch class="hap" aria-label="Toggle the info and EPG overlay">
     </div>
   </div>
 
@@ -325,6 +332,7 @@ function paint(s){
   else bits.push(`${s.device || 'output'} volume`);
   $('meta').textContent = bits.join('  ·  ');
   $('key-full').classList.toggle('on', !!s.full);
+  $('key-info').classList.toggle('on', !!s.infoShown);
   $('key-mute').classList.toggle('on', !!s.muted && s.canVolume);
   document.querySelectorAll('.vol').forEach(k => k.classList.toggle('dead', !s.canVolume));
 }

@@ -7,11 +7,13 @@
 --   file : `echo full > /tmp/coax_cmd`, watched with hs.pathwatcher
 --
 -- Coax is driven through its menu bar (hs.application:selectMenuItem) rather
--- than keystrokes wherever a menu item exists — the menus are the only stable
+-- than keystrokes wherever a menu item exists — the menus are the most stable
 -- handle on the app, since its window is a single Metal-drawn view with no
--- accessible controls. Channel menu titles embed the programme that is on right
--- now ("CH 113: Horror - Nope (6:45PM-9PM)"), so they go stale: every lookup can
--- refetch and retry once.
+-- titled controls. A few on-screen HUD buttons (e.g. the info-pane toggle)
+-- have no menu equivalent at all; those are reached by walking the window's
+-- AX tree and matching on AXDescription instead (see findHudButton). Channel
+-- menu titles embed the programme that is on right now ("CH 113: Horror - Nope
+-- (6:45PM-9PM)"), so they go stale: every lookup can refetch and retry once.
 --
 -- Usage from your ~/.hammerspoon/init.lua:
 --     coax = require("coax").start()
@@ -30,6 +32,7 @@ local CATEGORIES = { "Genre", "Studio", "Decades", "Recents", "Director",
 -- the reply the phone is about to read.
 require("hs.application"); require("hs.audiodevice"); require("hs.eventtap")
 require("hs.alert"); require("hs.timer"); require("hs.pathwatcher")
+local ax = require("hs.axuielement")
 
 local M = {}
 
@@ -143,6 +146,40 @@ local function fullScreen(a, want)
     return want and "full screen" or "windowed"
 end
 
+-- Finds an AXButton in Coax's main window by its AXDescription — the only
+-- handle on HUD controls the menu bar doesn't cover (they carry no AXTitle,
+-- just a description matching the on-screen label). Returns the button and
+-- the description it matched, since the description also names the state
+-- ("Hide info pane" = currently shown, "Show Info" = currently hidden).
+local function findHudButton(a, wantDescs, node, depth)
+    if not node then
+        local win = a:mainWindow()
+        if not win then return nil end
+        node = ax.windowElement(win)
+        depth = 0
+    end
+    if depth > 8 then return nil end
+    if node:attributeValue("AXRole") == "AXButton" then
+        local desc = node:attributeValue("AXDescription")
+        if desc and wantDescs[desc] then return node, desc end
+    end
+    for _, kid in ipairs(node:attributeValue("AXChildren") or {}) do
+        local hit, hitDesc = findHudButton(a, wantDescs, kid, depth + 1)
+        if hit then return hit, hitDesc end
+    end
+    return nil
+end
+
+-- `want` = true / false / nil (toggle), like fullScreen().
+local function infoPane(a, want)
+    local btn, desc = findHudButton(a, { ["Hide info pane"] = true, ["Show Info"] = true })
+    if not btn then return "info pane control not found" end
+    local isShown = desc == "Hide info pane"  -- the label names the action, not the state
+    if want == nil then want = not isShown end
+    if want ~= isShown then btn:performAction("AXPress") end
+    return want and "info pane shown" or "info pane hidden"
+end
+
 local function theme(a, want)
     local items = children(a, { "View", "Theme" }, true) or {}
     local current
@@ -230,6 +267,16 @@ H["full"] = function(a, arg)
     if arg == "on" or arg == "1" then want = true end
     if arg == "off" or arg == "0" then want = false end
     return fullScreen(a, want)
+end
+
+-- Distinct from H["full"]: that's the app window's OS-level full screen, this
+-- is the in-panel metadata/EPG overlay — a cinema-style declutter with no
+-- menu item and no key shortcut.
+H["info"] = function(a, arg)
+    local want = nil
+    if arg == "on" or arg == "1" or arg == "show" then want = true end
+    if arg == "off" or arg == "0" or arg == "hide" then want = false end
+    return infoPane(a, want)
 end
 
 H["ch"] = function(a, arg)
@@ -324,6 +371,7 @@ H["help"] = function()
     return table.concat({
         "u | d                channel up / down",
         "full [on|off]        toggle full screen",
+        "info [on|off]        toggle the info/EPG overlay (cinema declutter)",
         "ch <n>               tune to channel n",
         "find <text>          tune to first channel matching text",
         "chaos [category]     random channel (optionally within a category)",
@@ -346,6 +394,7 @@ local ALIAS = {
     up = "u", ["ch+"] = "u", chup = "u", next = "u", ["+"] = "u",
     down = "d", ["ch-"] = "d", chdown = "d", prev = "d", ["-"] = "d",
     fs = "full", fullscreen = "full",
+    overlay = "info", hud = "info",
     shuffle = "chaos", random = "chaos",
     tune = "ch", channel = "ch",
     search = "find",
@@ -381,6 +430,7 @@ function M.state()
         num       = tonumber(num),
         name      = name,
         full      = a:findMenuItem({ "View", "Exit Full Screen" }) ~= nil,
+        infoShown = select(2, findHudButton(a, { ["Hide info pane"] = true, ["Show Info"] = true })) == "Hide info pane",
         device    = dev and dev:name() or nil,
         -- nil, not 0: an HDMI set has no software volume at all, and the remote
         -- greys its volume keys out rather than pretending they do something.

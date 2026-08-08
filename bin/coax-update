@@ -3,9 +3,10 @@
 #
 # The Store's installer refuses to upgrade a running app and pops a "Quit Coax
 # to update" dialog — fine at a desk, useless when nobody's there to click it.
-# So this hard-kills Coax first, upgrades, then relaunches through coax.lua
-# (which is also the only thing driving fullscreen, since Coax's window has no
-# accessible controls of its own).
+# So this hard-kills Coax first, upgrades, then relaunches through coax.lua and
+# restores both fullscreen states: the app window (View > Enter Full Screen)
+# and the in-panel info/EPG overlay (an on-screen HUD button with no menu item
+# or key shortcut — see coax.lua's findHudButton).
 #
 #   coax-update
 #
@@ -47,6 +48,4 @@ echo "coax-update: relaunching"
 DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 "$DIR/coax" open
 "$DIR/coax" full on
-# TODO: also re-enter fullscreen on the streaming panel inside Coax, once we
-# know how to drive it — it has no menu item and no key shortcut (see coax.lua
-# H["full"], which only covers the app window via View > Enter/Exit Full Screen).
+"$DIR/coax" info off
